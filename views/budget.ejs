@@ -1,0 +1,79 @@
+<div class="container mt-5">
+    <!-- Budget Overview Table -->
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Budget Overview</h5>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Budget</th>
+                        <th>Spent</th>
+                        <th>Remaining</th>
+                        <th>Progress</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (typeof budgetDisplayData !== 'undefined' && budgetDisplayData.length > 0) { %>
+                        <% budgetDisplayData.forEach(function(item) { %>
+                            <tr>
+                                <td><%= item.category %></td>
+                                <td>$<%= item.budget.toFixed(2) %></td>
+                                <td>$<%= item.spent.toFixed(2) %></td>
+                                <td>$<%= item.remaining.toFixed(2) %></td>
+                                <td>
+                                    <div class="progress">
+                                        <div class="progress-bar <%= item.progress.color %>"
+                                             role="progressbar"
+                                             style="width: <%= item.progress.percentage %>%;"
+                                             aria-valuenow="<%= item.progress.percentage %>"
+                                             aria-valuemin="0"
+                                             aria-valuemax="100">
+                                            <%= item.progress.percentage %>%
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    <% } else { %>
+                        <tr>
+                            <td colspan="5" class="text-center">No budget data to display.</td>
+                        </tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Budget Setting Form -->
+<div class="container mt-4">
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Set Monthly Budget</h5>
+            <form id="budgetForm" action="/budget/set" method="POST" novalidate>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="budgetMonth" class="form-label">Budget Month</label>
+                        <input type="month" class="form-control" id="budgetMonth" name="budgetMonth" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="category" class="form-label">Category</label>
+                        <select class="form-select" id="category" name="category" required>
+                            <% if (typeof categories !== 'undefined' && categories.length > 0) { %>
+                                <% categories.forEach(function(category) { %>
+                                    <option value="<%= category %>"><%= category %></option>
+                                <% }); %>
+                            <% } %>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="amount" class="form-label">Budget Amount</label>
+                        <input type="number" class="form-control" id="amount" name="amount" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Set Budget</button>
+            </form>
+        </div>
+    </div>
+</div>
