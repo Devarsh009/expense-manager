@@ -58,8 +58,9 @@ app.use((req, res, next) => {
 // Middleware to protect routes
 const ensureAuthenticated = (req, res, next) => {
     if (req.isAuthenticated()) return next();
-    req.flash('error_msg', 'Please log in to view that resource');
-    res.redirect('/login');
+    // Redirect without flashing an error to avoid showing a popup on first visit
+    const nextUrl = encodeURIComponent(req.originalUrl || '/');
+    res.redirect(`/login?next=${nextUrl}`);
 };
 
 // Set up session and passport
