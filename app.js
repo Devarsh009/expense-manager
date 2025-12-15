@@ -1,5 +1,5 @@
 const express = require('express');
-const db = require('./db'); // Your MySQL connection
+const db = require('./db'); // PostgreSQL connection
 const bodyParser = require('body-parser');
 const expressLayouts = require('express-ejs-layouts');
 const flash = require('connect-flash');
@@ -75,7 +75,7 @@ app.use(passport.session());
 // Passport strategy for login
 passport.use(new LocalStrategy({ usernameField: 'email' }, async (email, password, done) => {
     try {
-        const [rows] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+        const rows = await db.query('SELECT * FROM users WHERE email = $1', [email]);
         if (rows.length === 0) {
             return done(null, false, { message: 'Incorrect email.' });
         }
@@ -97,7 +97,7 @@ passport.serializeUser((user, done) => {
 
 passport.deserializeUser(async (id, done) => {
     try {
-        const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [id]);
+        const rows = await db.query('SELECT * FROM users WHERE id = $1', [id]);
         if (rows.length === 0) {
             return done(null, false);
         }
@@ -122,11 +122,11 @@ const calculateFinances = (transactions) => {
 // Home Page (Protected)
 // Home Page (Dashboard) Route
 app.get('/', ensureAuthenticated, async (req, res) => {
-    let query = 'SELECT * FROM transactions WHERE user_id = ?';
+    let query = 'SELECT * FROM transactions WHERE user_id = $1';
     let params = [req.user.id];
 
     if (req.query.startDate && req.query.endDate) {
-        query += ' AND date BETWEEN ? AND ?';
+        query += ' AND date BETWEEN $2 AND $3';
         params.push(req.query.startDate, req.query.endDate);
     }
 
@@ -135,7 +135,7 @@ app.get('/', ensureAuthenticated, async (req, res) => {
     console.log('Dashboard Params:', params);
 
     try {
-        const [transactions] = await db.query(query, params);
+        const transactions = await db.query(query, params);
         const { income, expenses, balance } = calculateFinances(transactions);
         res.render('index', { title: 'Dashboard', transactions, income, expenses, balance });
     } catch (err) {
@@ -169,7 +169,7 @@ app.post('/add', ensureAuthenticated, async (req, res) => {
     }
 
     try {
-        const query = 'INSERT INTO transactions (user_id, type, amount, date, description, category) VALUES (?, ?, ?, ?, ?, ?)';
+        const query = 'INSERT INTO transactions (user_id, type, amount, date, description, category) VALUES ($1, $2, $3, $4, $5, $6)';
         await db.execute(query, [userId, type, amount, date, description, category]);
         req.flash('success', 'Transaction added successfully!');
         res.redirect('/');
@@ -210,22 +210,22 @@ function getCategoriesSummary(transactions) {
 app.get('/summary', ensureAuthenticated, async (req, res) => {
     try {
         // Fetch all transactions for cards and tables
-        let allTransactionQuery = 'SELECT * FROM transactions WHERE user_id = ?';
+        let allTransactionQuery = 'SELECT * FROM transactions WHERE user_id = $1';
         let allTransactionParams = [req.user.id];
         if (req.query.startDate && req.query.endDate) {
-            allTransactionQuery += ' AND date BETWEEN ? AND ?';
+            allTransactionQuery += ' AND date BETWEEN $2 AND $3';
             allTransactionParams.push(req.query.startDate, req.query.endDate);
         }
-        const [allTransactions] = await db.query(allTransactionQuery, allTransactionParams);
+        const allTransactions = await db.query(allTransactionQuery, allTransactionParams);
 
         // Fetch only expense transactions for the pie chart
-        let expenseTransactionQuery = 'SELECT * FROM transactions WHERE user_id = ? AND type = "expense"';
-        let expenseTransactionParams = [req.user.id];
+        let expenseTransactionQuery = 'SELECT * FROM transactions WHERE user_id = $1 AND type = $2';
+        let expenseTransactionParams = [req.user.id, 'expense'];
         if (req.query.startDate && req.query.endDate) {
-            expenseTransactionQuery += ' AND date BETWEEN ? AND ?';
+            expenseTransactionQuery = 'SELECT * FROM transactions WHERE user_id = $1 AND type = $2 AND date BETWEEN $3 AND $4';
             expenseTransactionParams.push(req.query.startDate, req.query.endDate);
         }
-        const [expenseTransactions] = await db.query(expenseTransactionQuery, expenseTransactionParams);
+        const expenseTransactions = await db.query(expenseTransactionQuery, expenseTransactionParams);
 
         // Calculate income, expenses, balance from all transactions
         const { income, expenses, balance } = calculateFinances(allTransactions);
@@ -246,8 +246,8 @@ app.get('/summary', ensureAuthenticated, async (req, res) => {
             const [year, month] = req.query.barChartMonth.split('-');
 
             // 1. Get budgets for the selected month and normalize
-            const [rawBudgets] = await db.query(
-                'SELECT category, amount FROM budgets WHERE user_id = ? AND month = ? AND year = ?',
+            const rawBudgets = await db.query(
+                'SELECT category, amount FROM budgets WHERE user_id = $1 AND month = $2 AND year = $3',
                 [req.user.id, parseInt(month, 10), parseInt(year, 10)]
             );
             const budgetMap = new Map();
@@ -259,11 +259,11 @@ app.get('/summary', ensureAuthenticated, async (req, res) => {
             // 2. Get actual expenses for the selected month and normalize
             const firstDay = new Date(year, month - 1, 1);
             const lastDay = new Date(year, month, 0);
-            const [rawExpenses] = await db.query(
+            const rawExpenses = await db.query(
                 `SELECT category, SUM(amount) as total FROM transactions 
-                 WHERE user_id = ? AND type = 'expense' AND date BETWEEN ? AND ? 
+                 WHERE user_id = $1 AND type = $2 AND date BETWEEN $3 AND $4 
                  GROUP BY category`,
-                [req.user.id, firstDay, lastDay]
+                [req.user.id, 'expense', firstDay, lastDay]
             );
             const expenseMap = new Map();
             rawExpenses.forEach(item => {
@@ -325,14 +325,14 @@ app.get('/signup', (req, res) => {
 app.post('/signup', async (req, res) => {
     const { name, email, password } = req.body;
     try {
-        const [existing] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+        const existing = await db.query('SELECT * FROM users WHERE email = $1', [email]);
         if (existing.length > 0) {
             req.flash('error_msg', 'Email already registered');
             return res.redirect('/signup');
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        await db.query('INSERT INTO users (name, email, password) VALUES (?, ?, ?)', [name, email, hashedPassword]);
+        await db.query('INSERT INTO users (name, email, password) VALUES ($1, $2, $3)', [name, email, hashedPassword]);
 
         req.flash('success_msg', 'Registration successful! Please login.');
         res.redirect('/login');
@@ -354,14 +354,14 @@ app.get('/logout', (req, res) => {
 app.get('/budget', ensureAuthenticated, async (req, res) => {
     try {
         // Step 1: Get all unique, normalized categories from transactions
-        const [allCategoriesFromDb] = await db.query(
-            'SELECT DISTINCT category FROM transactions WHERE user_id = ? AND type = "expense"',
-            [req.user.id]
+        const allCategoriesFromDb = await db.query(
+            'SELECT DISTINCT category FROM transactions WHERE user_id = $1 AND type = $2',
+            [req.user.id, 'expense']
         );
         const categories = [...new Set(allCategoriesFromDb.map(cat => categoryMapping[cat.category] || cat.category))];
         
         // Step 2: Get budget data and normalize it
-        const [rawBudgetData] = await db.query('SELECT category, amount FROM budgets WHERE user_id = ?', [req.user.id]);
+        const rawBudgetData = await db.query('SELECT category, amount FROM budgets WHERE user_id = $1', [req.user.id]);
         const budgetMap = new Map();
         rawBudgetData.forEach(item => {
             const category = categoryMapping[item.category] || item.category;
@@ -370,9 +370,9 @@ app.get('/budget', ensureAuthenticated, async (req, res) => {
         });
 
         // Step 3: Get expense data and normalize it
-        const [rawExpenseData] = await db.query(
-            'SELECT category, SUM(amount) as total FROM transactions WHERE user_id = ? AND type = "expense" GROUP BY category',
-            [req.user.id]
+        const rawExpenseData = await db.query(
+            'SELECT category, SUM(amount) as total FROM transactions WHERE user_id = $1 AND type = $2 GROUP BY category',
+            [req.user.id, 'expense']
         );
         const expenseMap = new Map();
         rawExpenseData.forEach(item => {
@@ -421,9 +421,12 @@ app.post('/budget/set', ensureAuthenticated, async (req, res) => {
         // Parse month and year from budgetMonth (format: YYYY-MM)
         const [year, month] = budgetMonth ? budgetMonth.split('-') : [null, null];
         console.log('Parsed year:', year, 'Parsed month:', month);
-        // Use REPLACE INTO to handle both insert and update
+        // Use PostgreSQL INSERT ... ON CONFLICT to handle both insert and update
         await db.query(
-            'REPLACE INTO budgets (user_id, category, amount, month, year) VALUES (?, ?, ?, ?, ?)',
+            `INSERT INTO budgets (user_id, category, amount, month, year) 
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (user_id, category, month, year) 
+             DO UPDATE SET amount = EXCLUDED.amount`,
             [req.user.id, category, amount, parseInt(month), parseInt(year)]
         );
         req.flash('success_msg', 'Budget updated successfully');
@@ -459,18 +462,19 @@ app.get('/api/budget-data', ensureAuthenticated, async (req, res) => {
         };
 
         // Get budget data from database
-        const [rawBudgets] = await db.query('SELECT category, amount FROM budgets WHERE user_id = ?', [req.user.id]);
+        const rawBudgets = await db.query('SELECT category, amount FROM budgets WHERE user_id = $1', [req.user.id]);
         const budgets = normalizeAndAggregate(rawBudgets, 'category', 'amount');
         
         // Get expense data from database, filtered by date if provided
-        let expenseQuery = 'SELECT category, SUM(amount) as total FROM transactions WHERE user_id = ? AND type = "expense"';
-        let expenseParams = [req.user.id];
+        let expenseQuery = 'SELECT category, SUM(amount) as total FROM transactions WHERE user_id = $1 AND type = $2';
+        let expenseParams = [req.user.id, 'expense'];
         if (req.query.startDate && req.query.endDate) {
-            expenseQuery += ' AND date BETWEEN ? AND ?';
+            expenseQuery = 'SELECT category, SUM(amount) as total FROM transactions WHERE user_id = $1 AND type = $2 AND date BETWEEN $3 AND $4 GROUP BY category';
             expenseParams.push(req.query.startDate, req.query.endDate);
+        } else {
+            expenseQuery += ' GROUP BY category';
         }
-        expenseQuery += ' GROUP BY category';
-        const [rawExpenses] = await db.query(expenseQuery, expenseParams);
+        const rawExpenses = await db.query(expenseQuery, expenseParams);
         const expenses = normalizeAndAggregate(rawExpenses, 'category', 'total');
 
         // Create a unified list of categories from both budgets and expenses
@@ -522,12 +526,12 @@ app.post('/settings/profile', ensureAuthenticated, async (req, res) => {
     const { name, email } = req.body;
     try {
         // Check if email is already used by another user
-        const [existing] = await db.query('SELECT * FROM users WHERE email = ? AND id != ?', [email, req.user.id]);
+        const existing = await db.query('SELECT * FROM users WHERE email = $1 AND id != $2', [email, req.user.id]);
         if (existing.length > 0) {
             req.flash('error_msg', 'Email already in use by another account.');
             return res.redirect('/settings');
         }
-        await db.query('UPDATE users SET name = ?, email = ? WHERE id = ?', [name, email, req.user.id]);
+        await db.query('UPDATE users SET name = $1, email = $2 WHERE id = $3', [name, email, req.user.id]);
         req.flash('success_msg', 'Profile updated successfully.');
         // Update session user
         req.user.name = name;
@@ -545,7 +549,7 @@ app.post('/settings/password', ensureAuthenticated, async (req, res) => {
     const { currentPassword, newPassword, confirmPassword } = req.body;
     try {
         // Get current user
-        const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
+        const rows = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
         const user = rows[0];
         // Check current password
         const isMatch = await bcrypt.compare(currentPassword, user.password);
@@ -560,7 +564,7 @@ app.post('/settings/password', ensureAuthenticated, async (req, res) => {
         }
         // Hash new password and update
         const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await db.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, req.user.id]);
+        await db.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, req.user.id]);
         req.flash('success_msg', 'Password changed successfully.');
         res.redirect('/settings');
     } catch (err) {
@@ -600,29 +604,29 @@ app.post('/api/reports', ensureAuthenticated, async (req, res) => {
             const lastDay = new Date(a_year, a_month, 0);
 
             // 1. Get summary (income, expenses, savings)
-            const [summary] = await db.execute(
+            const summary = await db.execute(
                 `SELECT 
                     SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as totalIncome,
                     SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as totalExpense
                  FROM transactions 
-                 WHERE user_id = ? AND date BETWEEN ? AND ?`,
+                 WHERE user_id = $1 AND date BETWEEN $2 AND $3`,
                 [userId, firstDay, lastDay]
             );
             const totalIncome = summary[0].totalIncome || 0;
             const totalExpense = summary[0].totalExpense || 0;
 
             // 2. Get expense distribution by category
-            const [expenseDistribution] = await db.execute(
+            const expenseDistribution = await db.execute(
                 `SELECT category, SUM(amount) as total 
                  FROM transactions 
-                 WHERE user_id = ? AND type = 'expense' AND date BETWEEN ? AND ? 
+                 WHERE user_id = $1 AND type = $2 AND date BETWEEN $3 AND $4 
                  GROUP BY category ORDER BY total DESC`,
-                [userId, firstDay, lastDay]
+                [userId, 'expense', firstDay, lastDay]
             );
 
             // 3. Get all transactions for the period
-            const [transactions] = await db.execute(
-                `SELECT * FROM transactions WHERE user_id = ? AND date BETWEEN ? AND ? ORDER BY date DESC`,
+            const transactions = await db.execute(
+                `SELECT * FROM transactions WHERE user_id = $1 AND date BETWEEN $2 AND $3 ORDER BY date DESC`,
                 [userId, firstDay, lastDay]
             );
 
@@ -640,14 +644,14 @@ app.post('/api/reports', ensureAuthenticated, async (req, res) => {
                 return res.status(400).json({ success: false, message: 'Year is required for yearly report.' });
             }
 
-            const [monthlyTrends] = await db.execute(
+            const monthlyTrends = await db.execute(
                 `SELECT 
-                    MONTH(date) as monthNum,
+                    EXTRACT(MONTH FROM date)::integer as monthNum,
                     SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as totalIncome,
                     SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as totalExpense
                  FROM transactions 
-                 WHERE user_id = ? AND YEAR(date) = ? 
-                 GROUP BY MONTH(date) 
+                 WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $2 
+                 GROUP BY EXTRACT(MONTH FROM date)
                  ORDER BY monthNum ASC`,
                 [userId, year]
             );
@@ -672,29 +676,29 @@ app.post('/api/reports', ensureAuthenticated, async (req, res) => {
             }
 
             // 1. Get summary
-            const [summary] = await db.execute(
+            const summary = await db.execute(
                 `SELECT 
                     SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as totalIncome,
                     SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as totalExpense
                  FROM transactions 
-                 WHERE user_id = ? AND date BETWEEN ? AND ?`,
+                 WHERE user_id = $1 AND date BETWEEN $2 AND $3`,
                 [userId, startDate, endDate]
             );
             const totalIncome = summary[0].totalIncome || 0;
             const totalExpense = summary[0].totalExpense || 0;
 
             // 2. Get expense distribution
-            const [expenseDistribution] = await db.execute(
+            const expenseDistribution = await db.execute(
                 `SELECT category, SUM(amount) as total 
                  FROM transactions 
-                 WHERE user_id = ? AND type = 'expense' AND date BETWEEN ? AND ? 
+                 WHERE user_id = $1 AND type = $2 AND date BETWEEN $3 AND $4 
                  GROUP BY category ORDER BY total DESC`,
-                [userId, startDate, endDate]
+                [userId, 'expense', startDate, endDate]
             );
 
             // 3. Get all transactions
-            const [transactions] = await db.execute(
-                `SELECT * FROM transactions WHERE user_id = ? AND date BETWEEN ? AND ? ORDER BY date DESC`,
+            const transactions = await db.execute(
+                `SELECT * FROM transactions WHERE user_id = $1 AND date BETWEEN $2 AND $3 ORDER BY date DESC`,
                 [userId, startDate, endDate]
             );
 
