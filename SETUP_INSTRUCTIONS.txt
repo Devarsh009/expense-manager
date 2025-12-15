@@ -1,0 +1,31 @@
+===========================================
+NEONDB SETUP INSTRUCTIONS
+===========================================
+
+STEP 1: Create .env file
+-------------------------
+Create a file named ".env" in the root directory with this content:
+
+DATABASE_URL=postgresql://neondb_owner:npg_jD0R6ikVZSEG@ep-lively-scene-a4a764qr-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+NODE_ENV=development
+
+STEP 2: Install Dependencies
+-----------------------------
+Run: npm install
+
+STEP 3: Create Database Tables
+------------------------------
+1. Go to your NeonDB dashboard: https://console.neon.tech
+2. Open the SQL Editor
+3. Copy and paste the contents of schema.sql
+4. Click "Run" to execute the SQL
+
+STEP 4: Start the Server
+-------------------------
+Run: node app.js
+
+You should see: "Connected to PostgreSQL database"
+Then: "Server running on http://localhost:3001"
+
+===========================================
+
