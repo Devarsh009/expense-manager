@@ -1,0 +1,130 @@
+[1mdiff --git a/app.js b/app.js[m
+[1mindex 4eeeadf..41a6db8 100644[m
+[1m--- a/app.js[m
+[1m+++ b/app.js[m
+[36m@@ -62,16 +62,6 @@[m [mconst ensureAuthenticated = (req, res, next) => {[m
+     res.redirect('/login');[m
+ };[m
+ [m
+[31m-// Set up session and passport[m
+[31m-app.use(session({[m
+[31m-    secret: 'finance-manager-secret',[m
+[31m-    resave: false,[m
+[31m-    saveUninitialized: false[m
+[31m-}));[m
+[31m-[m
+[31m-app.use(passport.initialize());[m
+[31m-app.use(passport.session());[m
+[31m-[m
+ // Passport strategy for login[m
+ passport.use(new LocalStrategy({ usernameField: 'email' }, async (email, password, done) => {[m
+     try {[m
+[36m@@ -136,10 +126,13 @@[m [mapp.get('/', ensureAuthenticated, async (req, res) => {[m
+ [m
+     try {[m
+         const [transactions] = await db.query(query, params);[m
+[31m-        const { income, expenses, balance } = calculateFinances(transactions);[m
+[31m-        res.render('index', { title: 'Dashboard', transactions, income, expenses, balance });[m
+[32m+[m[32m        // Ensure transactions is always an array[m
+[32m+[m[32m        const transactionsArray = Array.isArray(transactions) ? transactions : [];[m
+[32m+[m[32m        const { income, expenses, balance } = calculateFinances(transactionsArray);[m
+[32m+[m[32m        res.render('index', { title: 'Dashboard', transactions: transactionsArray, income, expenses, balance });[m
+     } catch (err) {[m
+[31m-        console.error(err);[m
+[32m+[m[32m        console.error('Error in dashboard route:', err);[m
+[32m+[m[32m        req.flash('error_msg', 'Error loading dashboard. Please try again.');[m
+         res.redirect('/login');[m
+     }[m
+ });[m
+[36m@@ -183,13 +176,20 @@[m [mapp.post('/add', ensureAuthenticated, async (req, res) => {[m
+ function getCategoriesSummary(transactions) {[m
+     const categorySummary = {};[m
+ [m
+[32m+[m[32m    // Ensure transactions is an array[m
+[32m+[m[32m    if (!Array.isArray(transactions)) {[m
+[32m+[m[32m        return [];[m
+[32m+[m[32m    }[m
+[32m+[m
+     transactions.forEach(t => {[m
+[32m+[m[32m        if (!t) return; // Skip null/undefined transactions[m
+[32m+[m[41m        [m
+         let category = t.category;[m
+         if (categoryMapping[category]) {[m
+             category = categoryMapping[category];[m
+         }[m
+ [m
+[31m-        const amount = parseFloat(t.amount);[m
+[32m+[m[32m        const amount = parseFloat(t.amount) || 0;[m
+ [m
+         if (category) {[m
+             if (!categorySummary[category]) {[m
+[36m@@ -217,6 +217,7 @@[m [mapp.get('/summary', ensureAuthenticated, async (req, res) => {[m
+             allTransactionParams.push(req.query.startDate, req.query.endDate);[m
+         }[m
+         const [allTransactions] = await db.query(allTransactionQuery, allTransactionParams);[m
+[32m+[m[32m        const allTransactionsArray = Array.isArray(allTransactions) ? allTransactions : [];[m
+ [m
+         // Fetch only expense transactions for the pie chart[m
+         let expenseTransactionQuery = 'SELECT * FROM transactions WHERE user_id = ? AND type = "expense"';[m
+[36m@@ -226,15 +227,16 @@[m [mapp.get('/summary', ensureAuthenticated, async (req, res) => {[m
+             expenseTransactionParams.push(req.query.startDate, req.query.endDate);[m
+         }[m
+         const [expenseTransactions] = await db.query(expenseTransactionQuery, expenseTransactionParams);[m
+[32m+[m[32m        const expenseTransactionsArray = Array.isArray(expenseTransactions) ? expenseTransactions : [];[m
+ [m
+         // Calculate income, expenses, balance from all transactions[m
+[31m-        const { income, expenses, balance } = calculateFinances(allTransactions);[m
+[32m+[m[32m        const { income, expenses, balance } = calculateFinances(allTransactionsArray);[m
+ [m
+         // Get categories summary for all transactions (for table)[m
+[31m-        const categories = getCategoriesSummary(allTransactions);[m
+[32m+[m[32m        const categories = getCategoriesSummary(allTransactionsArray);[m
+ [m
+         // Prepare expenseData for pie chart (only expenses)[m
+[31m-        const expenseCategories = getCategoriesSummary(expenseTransactions);[m
+[32m+[m[32m        const expenseCategories = getCategoriesSummary(expenseTransactionsArray);[m
+         const expenseDataForPie = expenseCategories.map(cat => ({[m
+             category: cat.name,[m
+             total: cat.total[m
+[36m@@ -280,7 +282,7 @@[m [mapp.get('/summary', ensureAuthenticated, async (req, res) => {[m
+ [m
+         res.render('summary', {[m
+             title: 'Summary - Personal Finance',[m
+[31m-            transactions: allTransactions,[m
+[32m+[m[32m            transactions: allTransactionsArray,[m
+             income,[m
+             expenses,[m
+             balance,[m
+[36m@@ -346,7 +348,11 @@[m [mapp.post('/signup', async (req, res) => {[m
+ // Logout[m
+ app.get('/logout', (req, res) => {[m
+     req.logout((err) => {[m
+[31m-        res.redirect('/');[m
+[32m+[m[32m        if (err) {[m
+[32m+[m[32m            console.error('Logout error:', err);[m
+[32m+[m[32m        }[m
+[32m+[m[32m        req.flash('success_msg', 'You have been logged out successfully.');[m
+[32m+[m[32m        res.redirect('/login');[m
+     });[m
+ });[m
+ [m
+[36m@@ -721,6 +727,19 @@[m [mapp.post('/api/reports', ensureAuthenticated, async (req, res) => {[m
+     }[m
+ });[m
+ [m
+[32m+[m[32m// Global error handler middleware (should be last)[m
+[32m+[m[32mapp.use((err, req, res, next) => {[m
+[32m+[m[32m    console.error('Unhandled error:', err);[m
+[32m+[m[32m    if (!res.headersSent) {[m
+[32m+[m[32m        req.flash('error_msg', 'An unexpected error occurred. Please try again.');[m
+[32m+[m[32m        if (req.isAuthenticated()) {[m
+[32m+[m[32m            res.redirect('/');[m
+[32m+[m[32m        } else {[m
+[32m+[m[32m            res.redirect('/login');[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m[32m});[m
+[32m+[m
+ // Start Server[m
+ app.listen(3001, () => {[m
+     console.log('Server running on http://localhost:3001');[m

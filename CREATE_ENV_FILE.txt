@@ -1,0 +1,39 @@
+===========================================
+HOW TO CREATE .env FILE
+===========================================
+
+The error shows it's trying to connect to localhost instead of NeonDB.
+This means the .env file is missing or not being read.
+
+OPTION 1: Create manually
+--------------------------
+1. Create a new file named ".env" (with the dot at the start)
+2. Add this content (replace with your actual connection string):
+
+DATABASE_URL=postgresql://neondb_owner:npg_jD0R6ikVZSEG@ep-lively-scene-a4a764qr-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+NODE_ENV=development
+
+3. Save the file in the root directory (same folder as app.js)
+
+OPTION 2: Use PowerShell script
+-------------------------------
+Run this command in PowerShell:
+    .\create-env.ps1
+
+OPTION 3: Use command line
+--------------------------
+In PowerShell, run:
+    echo "DATABASE_URL=postgresql://neondb_owner:npg_jD0R6ikVZSEG@ep-lively-scene-a4a764qr-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" > .env
+    echo "NODE_ENV=development" >> .env
+
+IMPORTANT:
+- The file must be named exactly ".env" (with the dot)
+- It must be in the root directory
+- No spaces around the = sign
+- Make sure the connection string is on one line
+
+After creating .env file, run:
+    node test-connection.js
+
+===========================================
+

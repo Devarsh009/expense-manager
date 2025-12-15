@@ -1,10 +1,22 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+// Check if DATABASE_URL is set
+if (!process.env.DATABASE_URL) {
+    console.error('❌ ERROR: DATABASE_URL is not set in .env file!');
+    console.error('Please create a .env file with your NeonDB connection string.');
+    console.error('Example:');
+    console.error('DATABASE_URL=postgresql://user:password@host/database?sslmode=require');
+    process.exit(1);
+}
+
 // Create PostgreSQL connection pool
+// NeonDB requires SSL, so we always enable it
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    ssl: {
+        rejectUnauthorized: false // Required for NeonDB
+    }
 });
 
 // Test connection
